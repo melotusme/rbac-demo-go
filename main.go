@@ -27,16 +27,16 @@ func (s *UserService) Can(userID uint, route string) (ok bool) {
 	return
 }
 
-func (s *UserService) Permissions(userID uint) (aps []Permission) {
+func (s *UserService) Permissions(userID uint) (rst []Permission) {
 	u := User{}
 	s.db.First(&u, userID)
 	roles := []Role{}
 	s.db.Model(&u).Related(&roles, "Roles")
-	aps = []Permission{}
+	rst = []Permission{}
 	for _, r := range roles {
 		ps := []Permission{}
 		s.db.Model(&r).Related(&ps, "Permissions")
-		aps = append(aps, ps...)
+		rst = append(rst, ps...)
 	}
 	return
 }
@@ -60,10 +60,10 @@ type Permission struct {
 	Roles   []Role `gorm:"many2many:role_permissions"`
 	Subject string `gorm:"subject"`
 	Action  string `gorm:"action"`
-	Route   string
+	Route   string `gorm:"route"`
 }
 
-type Article struct {
+type ArticleResource struct {
 	gorm.Model
 	Title   string `gorm:"title"`
 	Content string `gorm:"content"`
@@ -73,12 +73,10 @@ func NewAuthorizeMiddleware(db *gorm.DB) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(ctx echo.Context) error {
 			route := ctx.Request().Method + ctx.Path()
-			//log.Printf("%s",ctx.Path())
 			if NewUserService(db).Can(1, route) {
 				return next(ctx)
 			}
 			return ctx.JSON(http.StatusForbidden, "no permission")
-			return next(ctx)
 		}
 	}
 }
@@ -91,7 +89,7 @@ func main() {
 	}
 
 	// Add table suffix when create tables
-	db.Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(&User{}, &Role{}, &Permission{}, &Article{})
+	db.Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(&User{}, &Role{}, &Permission{}, &ArticleResource{})
 
 	e := echo.New()
 	am := NewAuthorizeMiddleware(db)
@@ -99,12 +97,12 @@ func main() {
 	e.GET("/test/:name", index)
 	e.POST("/test", index)
 	e.Use(am)
-	ClearAndPersistRoutes(e, db)
+	ResetRoutes(e, db)
 	e.Logger.Fatal(e.Start(":8800"))
 
 }
 
-func ClearAndPersistRoutes(e *echo.Echo, db *gorm.DB) {
+func ResetRoutes(e *echo.Echo, db *gorm.DB) {
 	db.DropTable(&Permission{})
 	db.CreateTable(&Permission{})
 	for _, r := range e.Routes() {
